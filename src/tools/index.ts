@@ -1,0 +1,241 @@
+import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { z } from "zod";
+
+import type { AccountStore } from "../store/account-store.js";
+import type { Registry } from "../providers/registry.js";
+import type { ProviderId } from "../providers/types.js";
+
+export interface RegisterToolsOptions {
+  store: AccountStore;
+  registry: Registry;
+  readOnly?: boolean;
+}
+
+/** JSON-stringify a value into a single MCP text content block. */
+function ok(data: unknown) {
+  return {
+    content: [
+      { type: "text" as const, text: JSON.stringify(data, null, 2) },
+    ],
+  };
+}
+function fail(message: string) {
+  return {
+    isError: true,
+    content: [{ type: "text" as const, text: message }],
+  };
+}
+
+const emailAddrSchema = z.object({
+  address: z.string().email(),
+  name: z.string().optional(),
+});
+
+export function registerTools(server: McpServer, opts: RegisterToolsOptions): void {
+  const { store, registry, readOnly = false } = opts;
+
+  // ---------- account management ----------
+
+  server.registerTool(
+    "list_accounts",
+    {
+      description:
+        "List all email accounts known to this server (no secrets). " +
+        "Use the returned `email` value as the `account` argument to other tools.",
+      inputSchema: {},
+    },
+    async () => {
+      const rows = store.listAccounts().map((a) => ({
+        email: a.email,
+        provider: a.provider,
+        displayName: a.displayName,
+        addedAt: a.addedAt,
+      }));
+      return ok({ accounts: rows });
+    },
+  );
+
+  server.registerTool(
+    "add_account",
+    {
+      description:
+        "Start adding an email account. For Outlook this returns a device code " +
+        "the user must enter at the verification URL; then call `complete_add_account` " +
+        "with the returned `handle` to finalize. Disabled in --read-only mode.",
+      inputSchema: {
+        provider: z
+          .enum(["outlook", "imap", "gmail"])
+          .describe("Email backend. v1 only fully implements 'outlook'."),
+        email: z
+          .string()
+          .email()
+          .optional()
+          .describe("Optional hint — the provider will verify it against the auth result."),
+        config: z
+          .record(z.unknown())
+          .optional()
+          .describe("Provider-specific config (e.g. IMAP host/port). Unused for Outlook."),
+      },
+    },
+    async (args) => {
+      if (readOnly) return fail("server is in --read-only mode; add_account is disabled");
+      const provider = registry.get(args.provider as ProviderId);
+      try {
+        const res = await provider.addAccount({ email: args.email, config: args.config });
+        return ok(res);
+      } catch (err) {
+        return fail(errMsg(err));
+      }
+    },
+  );
+
+  server.registerTool(
+    "complete_add_account",
+    {
+      description:
+        "Poll/finalize a pending add_account flow. Returns `pending` until the user " +
+        "completes the device-code step, then `ready` with the persisted account.",
+      inputSchema: {
+        provider: z.enum(["outlook", "imap", "gmail"]),
+        handle: z.string().min(1),
+      },
+    },
+    async (args) => {
+      const provider = registry.get(args.provider as ProviderId);
+      if (!provider.completeAddAccount) {
+        return fail(`provider ${args.provider} has no async add-account flow`);
+      }
+      try {
+        const res = await provider.completeAddAccount(args.handle);
+        return ok(res);
+      } catch (err) {
+        return fail(errMsg(err));
+      }
+    },
+  );
+
+  server.registerTool(
+    "remove_account",
+    {
+      description: "Forget an account and delete its stored tokens. Disabled in --read-only mode.",
+      inputSchema: { email: z.string().email() },
+    },
+    async (args) => {
+      if (readOnly) return fail("server is in --read-only mode; remove_account is disabled");
+      const removed = await store.removeAccount(args.email);
+      return ok({ removed, email: args.email });
+    },
+  );
+
+  // ---------- email ops ----------
+
+  server.registerTool(
+    "list_emails",
+    {
+      description:
+        "List recent emails in a folder of the given account. Pass the user's email " +
+        "address as `account`; the server routes to the correct backend automatically.",
+      inputSchema: {
+        account: z.string().email(),
+        folder: z.string().default("inbox").optional(),
+        limit: z.number().int().positive().max(100).optional(),
+        unreadOnly: z.boolean().optional(),
+      },
+    },
+    async (args) => {
+      try {
+        const { provider, account } = registry.resolveByEmail(args.account);
+        const items = await provider.listEmails(account, {
+          folder: args.folder,
+          limit: args.limit,
+          unreadOnly: args.unreadOnly,
+        });
+        return ok({ account: account.email, count: items.length, items });
+      } catch (err) {
+        return fail(errMsg(err));
+      }
+    },
+  );
+
+  server.registerTool(
+    "search_emails",
+    {
+      description:
+        "Search emails by free-text query (KQL on Outlook). Returns lightweight summaries.",
+      inputSchema: {
+        account: z.string().email(),
+        query: z.string().min(1),
+        limit: z.number().int().positive().max(100).optional(),
+      },
+    },
+    async (args) => {
+      try {
+        const { provider, account } = registry.resolveByEmail(args.account);
+        const items = await provider.searchEmails(account, args.query, {
+          limit: args.limit,
+        });
+        return ok({ account: account.email, count: items.length, items });
+      } catch (err) {
+        return fail(errMsg(err));
+      }
+    },
+  );
+
+  server.registerTool(
+    "read_email",
+    {
+      description: "Fetch a single email with full body and recipients by id.",
+      inputSchema: {
+        account: z.string().email(),
+        id: z.string().min(1),
+      },
+    },
+    async (args) => {
+      try {
+        const { provider, account } = registry.resolveByEmail(args.account);
+        const msg = await provider.readEmail(account, args.id);
+        return ok(msg);
+      } catch (err) {
+        return fail(errMsg(err));
+      }
+    },
+  );
+
+  server.registerTool(
+    "send_email",
+    {
+      description: "Send an email from the given account. Disabled in --read-only mode.",
+      inputSchema: {
+        account: z.string().email(),
+        to: z.array(emailAddrSchema).min(1),
+        cc: z.array(emailAddrSchema).optional(),
+        bcc: z.array(emailAddrSchema).optional(),
+        subject: z.string(),
+        body: z.string(),
+        isHtml: z.boolean().optional(),
+      },
+    },
+    async (args) => {
+      if (readOnly) return fail("server is in --read-only mode; send_email is disabled");
+      try {
+        const { provider, account } = registry.resolveByEmail(args.account);
+        const res = await provider.sendEmail(account, {
+          to: args.to,
+          cc: args.cc,
+          bcc: args.bcc,
+          subject: args.subject,
+          body: args.body,
+          isHtml: args.isHtml,
+        });
+        return ok({ sent: true, ...res });
+      } catch (err) {
+        return fail(errMsg(err));
+      }
+    },
+  );
+}
+
+function errMsg(err: unknown): string {
+  if (err instanceof Error) return err.message;
+  return String(err);
+}

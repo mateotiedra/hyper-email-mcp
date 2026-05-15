@@ -1,0 +1,10 @@
+src/
+node_modules/
+.github/
+.vscode/
+*.test.ts
+vitest.config.ts
+tsup.config.ts
+tsconfig.json
+.env*
+coverage/
