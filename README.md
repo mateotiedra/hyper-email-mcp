@@ -81,11 +81,15 @@ account store.
 | `list_accounts` | — | Returns registered emails + provider, no secrets. |
 | `add_account` | `provider`, `email?`, `config?` | Starts device-code (Outlook). Returns `{handle, verification:{userCode, verificationUri, expiresAt}}`. |
 | `complete_add_account` | `provider`, `handle` | Returns `pending` / `ready` / `expired` / `error`. |
+| `get_account_settings` | `account` | Get signature (HTML) and style preferences for an account. |
+| `set_account_settings` | `account`, `signature?`, `style?` | Set signature HTML and font preferences. Disabled under `--read-only`. |
 | `remove_account` | `email` | Deletes tokens for the account. |
 | `list_emails` | `account`, `folder?`, `limit?`, `unreadOnly?` | Defaults: folder=`inbox`, limit=25. |
 | `search_emails` | `account`, `query`, `limit?` | KQL on Outlook. |
-| `read_email` | `account`, `id` | Returns full body + recipients + attachment metadata. |
-| `send_email` | `account`, `to[]`, `cc?`, `bcc?`, `subject`, `body`, `isHtml?` | Disabled under `--read-only`. |
+| `read_email` | `account`, `id`, `format?` | Returns full body + recipients + attachment metadata. `format`: `markdown` (default), `html`, or `text`. |
+| `read_attachment` | `account`, `messageId`, `attachmentId` | Download an attachment to a temporary file and return its path. |
+| `send_email` | `account`, `to[]`, `cc?`, `bcc?`, `subject`, `body`, `isHtml?`, `include_signature?`, `inReplyTo?`, `replyAll?`, `forwardMessageId?` | Send an email. Appends signature when `include_signature` is true. `inReplyTo` sends as threaded reply; `forwardMessageId` sends as forward. Disabled under `--read-only`. |
+| `draft_email` | `account`, `to[]`, `cc?`, `bcc?`, `subject`, `body`, `isHtml?`, `include_signature?`, `inReplyTo?`, `replyAll?`, `forwardMessageId?` | Save as draft instead of sending. Returns the draft message ID. Disabled under `--read-only`. |
 
 ### Add-account flow (Outlook)
 
