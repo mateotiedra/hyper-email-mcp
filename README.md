@@ -88,8 +88,12 @@ account store.
 | `search_emails` | `account`, `query`, `limit?` | KQL on Outlook. |
 | `read_email` | `account`, `id`, `format?` | Returns full body + recipients + attachment metadata. `format`: `markdown` (default), `html`, or `text`. |
 | `read_attachment` | `account`, `messageId`, `attachmentId` | Download an attachment to a temporary file and return its path. |
+| `archive_email` | `account`, `id` | Move a message to the Archive folder. Disabled under `--read-only`. |
+| `trash_email` | `account`, `id` | Move a message to Deleted Items (trash). Disabled under `--read-only`. |
+| `move_email` | `account`, `id`, `destination` | Move to any folder by well-known name (`inbox`, `drafts`, etc.) or custom folder ID. Disabled under `--read-only`. |
 | `send_email` | `account`, `to[]`, `cc?`, `bcc?`, `subject`, `body`, `isHtml?`, `include_signature?`, `inReplyTo?`, `replyAll?`, `forwardMessageId?` | Send an email. Appends signature when `include_signature` is true. `inReplyTo` sends as threaded reply; `forwardMessageId` sends as forward. Disabled under `--read-only`. |
-| `draft_email` | `account`, `to[]`, `cc?`, `bcc?`, `subject`, `body`, `isHtml?`, `include_signature?`, `inReplyTo?`, `replyAll?`, `forwardMessageId?` | Save as draft instead of sending. Returns the draft message ID. Disabled under `--read-only`. |
+| `draft_email` | `account`, `to[]`, `cc?`, `bcc?`, `subject`, `body`, `isHtml?`, `include_signature?`, `inReplyTo?`, `replyAll?`, `forwardMessageId?` | Save as draft instead of sending. Returns the draft message ID and HTML body (`draftHtml`). Disabled under `--read-only`. |
+| `edit_draft` | `account`, `id`, `to?`, `cc?`, `bcc?`, `subject?`, `body?`, `isHtml?`, `include_signature?` | Edit an existing draft by ID. Only provided fields are updated. Returns the updated draft ID and HTML body (`draftHtml`). Disabled under `--read-only`. |
 
 ### Add-account flow (Outlook)
 
