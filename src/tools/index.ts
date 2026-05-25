@@ -79,6 +79,15 @@ const styleOutputSchema = z.object({
   fontColor: z.string().optional(),
 });
 
+const folderInfoOutputSchema = z.object({
+  id: z.string(),
+  displayName: z.string(),
+  parentFolderId: z.string().optional(),
+  childFolderCount: z.number(),
+  totalItemCount: z.number(),
+  unreadItemCount: z.number(),
+});
+
 export function registerTools(server: McpServer, opts: RegisterToolsOptions): void {
   const { store, registry, readOnly = false, draftOnly = false } = opts;
 
@@ -556,6 +565,201 @@ export function registerTools(server: McpServer, opts: RegisterToolsOptions): vo
         const { provider, account } = registry.resolveByEmail(args.account);
         await provider.moveEmail(account, args.id, args.destination);
         const data = { moved: true as const, id: args.id, destination: args.destination };
+        return ok(data, data);
+      } catch (err) {
+        return fail(errMsg(err));
+      }
+    },
+  );
+
+  // ---------- read status ----------
+
+  const markReadInputSchema = {
+    account: z.string().email(),
+    id: z.string().min(1).describe("Message ID to mark as read"),
+  };
+
+  const markReadOutputSchema = {
+    marked: z.literal(true),
+    id: z.string(),
+    isRead: z.boolean(),
+  };
+
+  server.registerTool(
+    "mark_read",
+    {
+      description:
+        "Mark a message as read. Disabled in --read-only mode.",
+      inputSchema: markReadInputSchema,
+      outputSchema: markReadOutputSchema,
+    },
+    async (args) => {
+      if (readOnly) return fail("server is in --read-only mode; mark_read is disabled");
+      try {
+        const { provider, account } = registry.resolveByEmail(args.account);
+        await provider.markRead(account, args.id, true);
+        const data = { marked: true as const, id: args.id, isRead: true };
+        return ok(data, data);
+      } catch (err) {
+        return fail(errMsg(err));
+      }
+    },
+  );
+
+  server.registerTool(
+    "mark_unread",
+    {
+      description:
+        "Mark a message as unread. Disabled in --read-only mode.",
+      inputSchema: markReadInputSchema,
+      outputSchema: markReadOutputSchema,
+    },
+    async (args) => {
+      if (readOnly) return fail("server is in --read-only mode; mark_unread is disabled");
+      try {
+        const { provider, account } = registry.resolveByEmail(args.account);
+        await provider.markRead(account, args.id, false);
+        const data = { marked: true as const, id: args.id, isRead: false };
+        return ok(data, data);
+      } catch (err) {
+        return fail(errMsg(err));
+      }
+    },
+  );
+
+  // ---------- folder ops ----------
+
+  const listFoldersOutputSchema = {
+    account: z.string(),
+    count: z.number(),
+    items: z.array(folderInfoOutputSchema),
+  };
+
+  server.registerTool(
+    "list_folders",
+    {
+      description:
+        "List available mail folders. Returns top-level folders by default, " +
+        "or child folders of the given parent when `parentFolderId` is provided.",
+      inputSchema: {
+        account: z.string().email(),
+        parentFolderId: z
+          .string()
+          .optional()
+          .describe(
+            "When provided, lists child folders of this folder. " +
+            "When omitted, lists top-level folders (children of the root).",
+          ),
+      },
+      outputSchema: listFoldersOutputSchema,
+    },
+    async (args) => {
+      try {
+        const { provider, account } = registry.resolveByEmail(args.account);
+        const items = await provider.listFolders(account, {
+          parentFolderId: args.parentFolderId,
+        });
+        const data = { account: account.email, count: items.length, items };
+        return ok(data, data);
+      } catch (err) {
+        return fail(errMsg(err));
+      }
+    },
+  );
+
+  const createFolderOutputSchema = {
+    created: z.literal(true),
+    folder: folderInfoOutputSchema,
+  };
+
+  server.registerTool(
+    "create_folder",
+    {
+      description:
+        "Create a new mail folder. Creates under the root folder by default, " +
+        "or under the specified parent when `parentFolderId` is provided. " +
+        "Disabled in --read-only mode.",
+      inputSchema: {
+        account: z.string().email(),
+        displayName: z.string().min(1).describe("Name of the new folder"),
+        parentFolderId: z
+          .string()
+          .optional()
+          .describe(
+            "When provided, creates the folder as a child of this folder. " +
+            "When omitted, creates under the root folder.",
+          ),
+      },
+      outputSchema: createFolderOutputSchema,
+    },
+    async (args) => {
+      if (readOnly) return fail("server is in --read-only mode; create_folder is disabled");
+      try {
+        const { provider, account } = registry.resolveByEmail(args.account);
+        const folder = await provider.createFolder(account, {
+          displayName: args.displayName,
+          parentFolderId: args.parentFolderId,
+        });
+        const data = { created: true as const, folder };
+        return ok(data, data);
+      } catch (err) {
+        return fail(errMsg(err));
+      }
+    },
+  );
+
+  const deleteFolderOutputSchema = {
+    deleted: z.literal(true),
+    id: z.string(),
+  };
+
+  server.registerTool(
+    "delete_folder",
+    {
+      description:
+        "Delete a mail folder by ID. Disabled in --read-only mode.",
+      inputSchema: {
+        account: z.string().email(),
+        folderId: z.string().min(1).describe("ID of the folder to delete"),
+      },
+      outputSchema: deleteFolderOutputSchema,
+    },
+    async (args) => {
+      if (readOnly) return fail("server is in --read-only mode; delete_folder is disabled");
+      try {
+        const { provider, account } = registry.resolveByEmail(args.account);
+        await provider.deleteFolder(account, args.folderId);
+        const data = { deleted: true as const, id: args.folderId };
+        return ok(data, data);
+      } catch (err) {
+        return fail(errMsg(err));
+      }
+    },
+  );
+
+  const renameFolderOutputSchema = {
+    renamed: z.literal(true),
+    folder: folderInfoOutputSchema,
+  };
+
+  server.registerTool(
+    "rename_folder",
+    {
+      description:
+        "Rename an existing mail folder. Disabled in --read-only mode.",
+      inputSchema: {
+        account: z.string().email(),
+        folderId: z.string().min(1).describe("ID of the folder to rename"),
+        newName: z.string().min(1).describe("New display name for the folder"),
+      },
+      outputSchema: renameFolderOutputSchema,
+    },
+    async (args) => {
+      if (readOnly) return fail("server is in --read-only mode; rename_folder is disabled");
+      try {
+        const { provider, account } = registry.resolveByEmail(args.account);
+        const folder = await provider.renameFolder(account, args.folderId, args.newName);
+        const data = { renamed: true as const, folder };
         return ok(data, data);
       } catch (err) {
         return fail(errMsg(err));

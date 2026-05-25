@@ -11,11 +11,14 @@ import type {
   AddAccountResult,
   AttachmentContent,
   CompleteAddAccountResult,
+  CreateFolderInput,
   DraftUpdateInput,
   EmailFull,
   EmailProvider,
   EmailSummary,
+  FolderInfo,
   ListEmailsOptions,
+  ListFoldersOptions,
   SearchEmailsOptions,
   SendInput,
   EmailAddress,
@@ -536,6 +539,73 @@ export class OutlookProvider implements EmailProvider {
       .api(`/me/messages/${encodeURIComponent(id)}/move`)
       .post({ destinationId });
   }
+
+  async markRead(
+    account: AccountRecord,
+    id: string,
+    isRead: boolean,
+  ): Promise<void> {
+    const client = this.clients.get(account);
+    await client
+      .api(`/me/messages/${encodeURIComponent(id)}`)
+      .patch({ isRead });
+  }
+
+  async listFolders(
+    account: AccountRecord,
+    opts: ListFoldersOptions,
+  ): Promise<FolderInfo[]> {
+    const client = this.clients.get(account);
+    const endpoint = opts.parentFolderId
+      ? `/me/mailFolders/${encodeURIComponent(opts.parentFolderId)}/childFolders`
+      : "/me/mailFolders";
+    const res = (await client
+      .api(endpoint)
+      .select([
+        "id",
+        "displayName",
+        "parentFolderId",
+        "childFolderCount",
+        "totalItemCount",
+        "unreadItemCount",
+      ].join(","))
+      .get()) as { value: GraphFolder[] };
+    return (res.value ?? []).map(mapFolder);
+  }
+
+  async createFolder(
+    account: AccountRecord,
+    input: CreateFolderInput,
+  ): Promise<FolderInfo> {
+    const client = this.clients.get(account);
+    const parentId = input.parentFolderId ?? "msgfolderroot";
+    const created = (await client
+      .api(`/me/mailFolders/${encodeURIComponent(parentId)}/childFolders`)
+      .post({ displayName: input.displayName })) as GraphFolder;
+    return mapFolder(created);
+  }
+
+  async renameFolder(
+    account: AccountRecord,
+    folderId: string,
+    newName: string,
+  ): Promise<FolderInfo> {
+    const client = this.clients.get(account);
+    const updated = (await client
+      .api(`/me/mailFolders/${encodeURIComponent(folderId)}`)
+      .patch({ displayName: newName })) as GraphFolder;
+    return mapFolder(updated);
+  }
+
+  async deleteFolder(
+    account: AccountRecord,
+    folderId: string,
+  ): Promise<void> {
+    const client = this.clients.get(account);
+    await client
+      .api(`/me/mailFolders/${encodeURIComponent(folderId)}`)
+      .delete();
+  }
 }
 
 // ---------- mapping helpers ----------
@@ -561,6 +631,25 @@ interface GraphAttachment {
   name: string;
   contentType?: string;
   size?: number;
+}
+interface GraphFolder {
+  id: string;
+  displayName: string;
+  parentFolderId?: string;
+  childFolderCount: number;
+  totalItemCount: number;
+  unreadItemCount: number;
+}
+
+function mapFolder(f: GraphFolder): FolderInfo {
+  return {
+    id: f.id,
+    displayName: f.displayName,
+    parentFolderId: f.parentFolderId,
+    childFolderCount: f.childFolderCount,
+    totalItemCount: f.totalItemCount,
+    unreadItemCount: f.unreadItemCount,
+  };
 }
 
 function mapRecipient(r: GraphRecipient): EmailAddress {

@@ -4,11 +4,14 @@ import type {
   AddAccountResult,
   AttachmentContent,
   CompleteAddAccountResult,
+  CreateFolderInput,
   DraftUpdateInput,
   EmailFull,
   EmailProvider,
   EmailSummary,
+  FolderInfo,
   ListEmailsOptions,
+  ListFoldersOptions,
   SearchEmailsOptions,
   SendInput,
 } from "../types.js";
@@ -91,6 +94,43 @@ export class ImapProvider implements EmailProvider {
     _account: AccountRecord,
     _id: string,
     _destinationId: string,
+  ): Promise<void> {
+    throw new Error(NOT_IMPLEMENTED);
+  }
+
+  async markRead(
+    _account: AccountRecord,
+    _id: string,
+    _isRead: boolean,
+  ): Promise<void> {
+    throw new Error(NOT_IMPLEMENTED);
+  }
+
+  async listFolders(
+    _account: AccountRecord,
+    _opts: ListFoldersOptions,
+  ): Promise<FolderInfo[]> {
+    throw new Error(NOT_IMPLEMENTED);
+  }
+
+  async createFolder(
+    _account: AccountRecord,
+    _input: CreateFolderInput,
+  ): Promise<FolderInfo> {
+    throw new Error(NOT_IMPLEMENTED);
+  }
+
+  async renameFolder(
+    _account: AccountRecord,
+    _folderId: string,
+    _newName: string,
+  ): Promise<FolderInfo> {
+    throw new Error(NOT_IMPLEMENTED);
+  }
+
+  async deleteFolder(
+    _account: AccountRecord,
+    _folderId: string,
   ): Promise<void> {
     throw new Error(NOT_IMPLEMENTED);
   }
