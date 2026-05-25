@@ -70,6 +70,32 @@ reproducibly decryptable.
 
 CLI flags: `--http`, `--port`, `--host`, `--data-dir`, `--read-only`, `--help`.
 
+### Config file (`hypermail-config.json`)
+
+Instead of (or in addition to) CLI flags and env vars, you can configure the
+server with a `hypermail-config.json` file next to the server binary. The server
+looks for it in the same directory as `cli.js`.
+
+```jsonc
+{
+  "http": { "enabled": true, "port": 3000, "host": "0.0.0.0" },
+  "dataDir": "/path/to/data",
+  "tools": {
+    // allowlist: only these tools are registered
+    "enabled": ["list_emails", "search_emails", "read_email", "send_email"],
+    // blocklist: these tools are NOT registered
+    // "disabled": ["add_account", "remove_account"]
+  },
+  "providers": {
+    "outlook": { "clientId": "...", "tenantId": "..." }
+  }
+}
+```
+
+Per-tool filtering (`tools.enabled` / `tools.disabled`) lets operators ship
+minimal agent-facing surfaces — e.g. a read-only assistant that can only list
+and read emails.
+
 ## Tools
 
 All "email" tools take an `account` argument — the email address of the inbox
@@ -84,7 +110,7 @@ account store.
 | `get_account_settings` | `account` | Get signature (HTML) and style preferences for an account. |
 | `set_account_settings` | `account`, `signature?`, `style?` | Set signature HTML and font preferences. Disabled under `--read-only`. |
 | `remove_account` | `email` | Deletes tokens for the account. |
-| `list_emails` | `account`, `folder?`, `limit?`, `unreadOnly?` | Defaults: folder=`inbox`, limit=25. |
+| `list_emails` | `account`, `folder?`, `limit?`, `unreadOnly?`, `skip?` | Defaults: folder=`inbox`, limit=25. Supports pagination via `skip` — response includes `hasMore`. |
 | `search_emails` | `account`, `query`, `limit?` | KQL on Outlook. |
 | `read_email` | `account`, `id`, `format?` | Returns full body + recipients + attachment metadata. `format`: `markdown` (default), `html`, or `text`. |
 | `read_attachment` | `account`, `messageId`, `attachmentId` | Download an attachment to a temporary file and return its path. |
@@ -94,6 +120,14 @@ account store.
 | `send_email` | `account`, `to[]`, `cc?`, `bcc?`, `subject`, `body`, `isHtml?`, `include_signature?`, `inReplyTo?`, `replyAll?`, `forwardMessageId?` | Send an email. Appends signature when `include_signature` is true. `inReplyTo` sends as threaded reply; `forwardMessageId` sends as forward. Disabled under `--read-only`. |
 | `draft_email` | `account`, `to[]`, `cc?`, `bcc?`, `subject`, `body`, `isHtml?`, `include_signature?`, `inReplyTo?`, `replyAll?`, `forwardMessageId?` | Save as draft instead of sending. Returns the draft message ID and HTML body (`draftHtml`). Disabled under `--read-only`. |
 | `edit_draft` | `account`, `id`, `to?`, `cc?`, `bcc?`, `subject?`, `body?`, `isHtml?`, `include_signature?` | Edit an existing draft by ID. Only provided fields are updated. Returns the updated draft ID and HTML body (`draftHtml`). Disabled under `--read-only`. |
+| `send_draft` | `account`, `id` | Send an existing draft email by ID. Use with draft IDs returned by `draft_email` or `edit_draft`. Disabled under `--read-only`. |
+| `add_attachment_to_draft` | `account`, `id`, `path` | Attach a local file to an existing draft email. Disabled under `--read-only`. |
+| `list_folders` | `account`, `parentFolderId?` | List available mail folders. Returns top-level folders by default, or children of `parentFolderId`. |
+| `create_folder` | `account`, `displayName`, `parentFolderId?` | Create a new mail folder under root (default) or the given parent. Disabled under `--read-only`. |
+| `delete_folder` | `account`, `folderId` | Delete a mail folder by ID. Disabled under `--read-only`. |
+| `rename_folder` | `account`, `folderId`, `newName` | Rename an existing mail folder. Disabled under `--read-only`. |
+| `mark_read` | `account`, `id` | Mark a message as read. Disabled under `--read-only`. |
+| `mark_unread` | `account`, `id` | Mark a message as unread. Disabled under `--read-only`. |
 
 ### Add-account flow (Outlook)
 
@@ -121,7 +155,6 @@ account store.
 - IMAP provider (interface already in place at `src/providers/imap/index.ts`)
   — `imapflow` + `nodemailer`, password/app-password stored encrypted.
 - Gmail provider via Google OAuth.
-- Folder listing, attachment upload/download, mark-as-read.
 - Threading / conversations.
 
 ## Project layout
