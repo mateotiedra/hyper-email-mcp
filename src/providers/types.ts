@@ -129,6 +129,28 @@ export interface AttachmentContent {
   path: string;
 }
 
+export interface FolderInfo {
+  id: string;
+  displayName: string;
+  parentFolderId?: string;
+  childFolderCount: number;
+  totalItemCount: number;
+  unreadItemCount: number;
+}
+
+export interface ListFoldersOptions {
+  /** When provided, lists child folders of this folder. When omitted, lists
+   *  top-level folders (children of the root). */
+  parentFolderId?: string;
+}
+
+export interface CreateFolderInput {
+  displayName: string;
+  /** When provided, creates the folder as a child of this parent. When
+   *  omitted, creates under the root folder. */
+  parentFolderId?: string;
+}
+
 export interface EmailProvider {
   readonly id: ProviderId;
 
@@ -188,4 +210,21 @@ export interface EmailProvider {
     contentBytes: string,
     contentType?: string,
   ): Promise<{ id: string; attachment: { id: string; name: string; contentType?: string } }>;
+
+  /** Mark a message as read (isRead=true) or unread (isRead=false). */
+  markRead(account: AccountRecord, id: string, isRead: boolean): Promise<void>;
+
+  /** List mail folders. When parentFolderId is omitted, lists top-level
+   *  folders (children of the root). */
+  listFolders(account: AccountRecord, opts: ListFoldersOptions): Promise<FolderInfo[]>;
+
+  /** Create a new mail folder. When parentFolderId is omitted, creates
+   *  under the root folder. Returns the created folder. */
+  createFolder(account: AccountRecord, input: CreateFolderInput): Promise<FolderInfo>;
+
+  /** Rename an existing mail folder. Returns the updated folder. */
+  renameFolder(account: AccountRecord, folderId: string, newName: string): Promise<FolderInfo>;
+
+  /** Delete a mail folder by ID. */
+  deleteFolder(account: AccountRecord, folderId: string): Promise<void>;
 }
