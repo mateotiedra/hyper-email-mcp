@@ -280,4 +280,101 @@ export function registerComposeTools(
       },
     );
   }
+
+  // ---------- send_draft ----------
+
+  const sendDraftOutputSchema = {
+    sent: z.literal(true),
+    id: z.string(),
+  };
+
+  if (shouldRegister("send_draft", tools)) {
+    server.registerTool(
+      "send_draft",
+      {
+        description:
+          "Send an existing draft email by ID. " +
+          "Use this with draft IDs returned by `draft_email` or `edit_draft`. " +
+          "Disabled in --read-only mode.",
+        inputSchema: {
+          account: z.string().email(),
+          id: z.string().min(1).describe("Draft message ID to send"),
+        },
+        outputSchema: sendDraftOutputSchema,
+      },
+      async (args) => {
+        try {
+          const { provider, account } = registry.resolveByEmail(args.account);
+          const res = await provider.sendDraft(account, args.id);
+          const data = { sent: true as const, id: res.id };
+          return ok(data, data);
+        } catch (err) {
+          return fail(errMsg(err));
+        }
+      },
+    );
+  }
+
+  // ---------- add_attachment_to_draft ----------
+
+  const addAttachmentOutputSchema = {
+    attached: z.literal(true),
+    id: z.string(),
+    attachment: z.object({
+      id: z.string(),
+      name: z.string(),
+      contentType: z.string().optional(),
+    }),
+  };
+
+  if (shouldRegister("add_attachment_to_draft", tools)) {
+    server.registerTool(
+      "add_attachment_to_draft",
+      {
+        description:
+          "Add a file attachment to an existing draft email by ID. " +
+          "`contentBytes` must be base64-encoded file content. " +
+          "`contentType` is the MIME type (e.g. 'application/pdf'); " +
+          "defaults to 'application/octet-stream' if omitted. " +
+          "Disabled in --read-only mode.",
+        inputSchema: {
+          account: z.string().email(),
+          id: z.string().min(1).describe("Draft message ID"),
+          name: z
+            .string()
+            .min(1)
+            .describe("Attachment filename (e.g. 'report.pdf')"),
+          contentBytes: z
+            .string()
+            .min(1)
+            .describe("Base64-encoded file content"),
+          contentType: z
+            .string()
+            .optional()
+            .describe("MIME type (e.g. 'application/pdf')"),
+        },
+        outputSchema: addAttachmentOutputSchema,
+      },
+      async (args) => {
+        try {
+          const { provider, account } = registry.resolveByEmail(args.account);
+          const res = await provider.addAttachmentToDraft(
+            account,
+            args.id,
+            args.name,
+            args.contentBytes,
+            args.contentType,
+          );
+          const data = {
+            attached: true as const,
+            id: res.id,
+            attachment: res.attachment,
+          };
+          return ok(data, data as unknown as Record<string, unknown>);
+        } catch (err) {
+          return fail(errMsg(err));
+        }
+      },
+    );
+  }
 }

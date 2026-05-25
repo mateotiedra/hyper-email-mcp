@@ -18,6 +18,7 @@ import type {
   EmailSummary,
   FolderInfo,
   ListEmailsOptions,
+  ListEmailsResult,
   ListFoldersOptions,
   SearchEmailsOptions,
   SendInput,
@@ -187,7 +188,7 @@ export class OutlookProvider implements EmailProvider {
   async listEmails(
     account: AccountRecord,
     opts: ListEmailsOptions,
-  ): Promise<EmailSummary[]> {
+  ): Promise<ListEmailsResult> {
     const client = this.clients.get(account);
     const limit = clampLimit(opts.limit, 25, 100);
     const folder = opts.folder ?? "inbox";
@@ -197,6 +198,7 @@ export class OutlookProvider implements EmailProvider {
     let req = client
       .api(`/me/mailFolders/${encodeURIComponent(folder)}/messages`)
       .top(limit)
+      .skip(opts.skip ?? 0)
       .select([
         "id",
         "subject",
@@ -211,8 +213,11 @@ export class OutlookProvider implements EmailProvider {
 
     if (filterParts.length > 0) req = req.filter(filterParts.join(" and "));
 
-    const res = (await req.get()) as { value: GraphMessage[] };
-    return res.value.map((m) => mapSummary(m, folder));
+    const res = (await req.get()) as { value: GraphMessage[]; "@odata.nextLink"?: string };
+    return {
+      items: res.value.map((m) => mapSummary(m, folder)),
+      hasMore: !!res["@odata.nextLink"],
+    };
   }
 
   async searchEmails(
@@ -544,6 +549,37 @@ export class OutlookProvider implements EmailProvider {
     await client
       .api(`/me/messages/${encodeURIComponent(id)}/move`)
       .post({ destinationId });
+  }
+
+  async sendDraft(
+    account: AccountRecord,
+    id: string,
+  ): Promise<{ id: string }> {
+    const client = this.clients.get(account);
+    await client.api(`/me/messages/${encodeURIComponent(id)}/send`).post({});
+    return { id };
+  }
+
+  async addAttachmentToDraft(
+    account: AccountRecord,
+    draftId: string,
+    name: string,
+    contentBytes: string,
+    contentType?: string,
+  ): Promise<{ id: string; attachment: { id: string; name: string; contentType?: string } }> {
+    const client = this.clients.get(account);
+    const att = (await client
+      .api(`/me/messages/${encodeURIComponent(draftId)}/attachments`)
+      .post({
+        "@odata.type": "#microsoft.graph.fileAttachment",
+        name,
+        contentType: contentType ?? "application/octet-stream",
+        contentBytes,
+      })) as { id: string; name: string; contentType?: string };
+    return {
+      id: draftId,
+      attachment: { id: att.id, name: att.name, contentType: att.contentType },
+    };
   }
 
   async markRead(

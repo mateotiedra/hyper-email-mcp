@@ -97,6 +97,8 @@ export const KNOWN_TOOLS = [
   "send_email",
   "draft_email",
   "edit_draft",
+  "send_draft",
+  "add_attachment_to_draft",
 ] as const;
 
 // ── ${VAR} resolution ──

@@ -31,6 +31,8 @@ export function registerBrowseTools(
     account: z.string(),
     count: z.number(),
     items: z.array(emailSummaryOutputSchema),
+    skip: z.number(),
+    hasMore: z.boolean(),
   };
 
   if (shouldRegister("list_emails", tools)) {
@@ -45,21 +47,25 @@ export function registerBrowseTools(
           folder: z.string().default("inbox").optional(),
           limit: z.number().int().positive().max(100).optional(),
           unreadOnly: z.boolean().optional(),
+          skip: z.number().int().min(0).optional(),
         },
         outputSchema: emailListOutputSchema,
       },
       async (args) => {
         try {
           const { provider, account } = registry.resolveByEmail(args.account);
-          const items = await provider.listEmails(account, {
+          const { items, hasMore } = await provider.listEmails(account, {
             folder: args.folder,
             limit: args.limit,
             unreadOnly: args.unreadOnly,
+            skip: args.skip,
           });
           const data = {
             account: account.email,
             count: items.length,
             items,
+            skip: args.skip ?? 0,
+            hasMore,
           };
           return ok(data, data);
         } catch (err) {
