@@ -9,8 +9,8 @@ Microsoft account, or (soon) a personal IMAP mailbox — it just calls
 address as the `account` argument. The server routes to the right backend.
 
 **v1 status:** Outlook / Microsoft 365 (personal + work) fully supported via
-Microsoft Graph. IMAP and Gmail are stubbed at the provider interface so they
-can be plugged in without touching tool definitions.
+Microsoft Graph. IMAP (any IMAP server) supported via `imapflow` + `nodemailer`.
+Gmail supported via Google OAuth device-code flow.
 
 ## Why
 
@@ -152,10 +152,9 @@ account store.
 
 ## Roadmap
 
-- IMAP provider (interface already in place at `src/providers/imap/index.ts`)
-  — `imapflow` + `nodemailer`, password/app-password stored encrypted.
-- Gmail provider via Google OAuth.
 - Threading / conversations.
+- Calendar integration.
+- Webhook / push notifications for new mail.
 
 ## Project layout
 
@@ -172,7 +171,12 @@ src/
       auth.ts                  # msal-node device-code flow
       client.ts                # @microsoft/microsoft-graph-client factory
       index.ts                 # OutlookProvider implementation
-    imap/index.ts              # stub
+    imap/index.ts              # IMAP provider (imapflow + nodemailer)
+    gmail/
+      auth.ts                  # Google OAuth device-code flow
+      client.ts                # Gmail API (googleapis)
+      index.ts                 # GmailProvider implementation
+    shared/                    # Shared utilities across providers
   tools/index.ts               # MCP tool registrations
 ```
 
